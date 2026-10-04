@@ -1458,7 +1458,40 @@ class TestHtmlExtraction:
 
 
 class TestDocxExtraction:
-    """Tests for DOCX extraction via the zipfile fallback."""
+    """Tests for the preferred python-docx parser and the stdlib fallback."""
+
+    def test_extract_docx_python_docx_preserves_document_order(self, tmp_path):
+        from types import SimpleNamespace
+
+        from book_to_skill.parsers.docx import extract_docx_with_python_docx
+
+        docx_path = _make_minimal_docx(tmp_path / "interleaved.docx")
+        document = mock.Mock()
+        document.iter_inner_content.return_value = [
+            SimpleNamespace(text="Chapter 1: Validation"),
+            SimpleNamespace(
+                rows=[
+                    SimpleNamespace(
+                        cells=[
+                            SimpleNamespace(text="CH1_RULE"),
+                            SimpleNamespace(text="Reject negative balances."),
+                        ]
+                    )
+                ]
+            ),
+            SimpleNamespace(text="Chapter 2: Settlement"),
+        ]
+        python_docx = mock.Mock()
+        python_docx.Document.return_value = document
+
+        with mock.patch.dict(sys.modules, {"docx": python_docx}):
+            result = extract_docx_with_python_docx(str(docx_path))
+
+        assert result == (
+            "Chapter 1: Validation\n"
+            "CH1_RULE\tReject negative balances.\n"
+            "Chapter 2: Settlement"
+        )
 
     def test_extract_docx_zipfile_fallback(self, tmp_path):
         docx = _make_minimal_docx(tmp_path / "test.docx")
